@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "185388272551",
+    "project_id": "emotai123",
+    "storage_bucket": "emotai123.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:185388272551:android:493470252ea8b0ded00482",
+        "android_client_info": {
+          "package_name": "com.example.emotai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcMy4I0ccPxlAzxi8IeukMUvb8HuvSLvo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
