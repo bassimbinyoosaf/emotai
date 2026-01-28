@@ -1,4 +1,4 @@
-![photo_2026-01-28_10-48-30](https://github.com/user-attachments/assets/c10fb0c5-7bc6-4c0d-b027-6cb50deedb25)# 🧠 EmotAI – Flutter Emotion Detection App (Work in Progress)
+🧠 EmotAI – Flutter Emotion Detection App (Work in Progress)
 
 EmotAI is a Flutter-based mobile application focused on detecting user emotions and providing personalized recommendations, motivation, and support based on emotional state and personal interests.
 
@@ -75,10 +75,10 @@ lib/
 ---
 
 ## 📸 Screenshots
-![photo_2026-01-28_10-48-15](https://github.com/user-attachments/assets/433acf77-709f-4891-a6e6-02e5d5abd2a4)
-![photo_2026-01-28_10-48-22](https://github.com/user-attachments/assets/e790b25c-735e-4e94-8042-fd19f21dc249)
-![photo_2026-01-28_10-48-19](https://github.com/user-attachments/assets/e7a326be-5073-4ef2-9e4f-a023ae80d80b)
-![photo_2026-01-28_10-48-30](https://github.com/user-attachments/assets/bfd5101b-f7f6-42dc-ac3b-5008d00653d6)
+<img src="https://github.com/user-attachments/assets/433acf77-709f-4891-a6e6-02e5d5abd2a4" width="250">
+<img src="https://github.com/user-attachments/assets/e790b25c-735e-4e94-8042-fd19f21dc249" width="250">
+<img src="https://github.com/user-attachments/assets/e7a326be-5073-4ef2-9e4f-a023ae80d80b" width="250">
+<img src="https://github.com/user-attachments/assets/bfd5101b-f7f6-42dc-ac3b-5008d00653d6" width="250">
 
 ---
 
