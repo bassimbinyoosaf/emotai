@@ -75,10 +75,10 @@ lib/
 ---
 
 ## 📸 Screenshots
-<img src="https://github.com/user-attachments/assets/433acf77-709f-4891-a6e6-02e5d5abd2a4" width="250" style="border-radius:16;">
-<img src="https://github.com/user-attachments/assets/e790b25c-735e-4e94-8042-fd19f21dc249" width="250" style="border-radius:16;">
-<img src="https://github.com/user-attachments/assets/e7a326be-5073-4ef2-9e4f-a023ae80d80b" width="250" style="border-radius:16;">
-<img src="https://github.com/user-attachments/assets/bfd5101b-f7f6-42dc-ac3b-5008d00653d6" width="250" style="border-radius:16;">
+<img src="https://github.com/user-attachments/assets/433acf77-709f-4891-a6e6-02e5d5abd2a4" width="250">
+<img src="https://github.com/user-attachments/assets/e790b25c-735e-4e94-8042-fd19f21dc249" width="250">
+<img src="https://github.com/user-attachments/assets/e7a326be-5073-4ef2-9e4f-a023ae80d80b" width="250">
+<img src="https://github.com/user-attachments/assets/bfd5101b-f7f6-42dc-ac3b-5008d00653d6" width="250">
 
 ---
 
