@@ -5,6 +5,12 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
 import 'home_al_page.dart'; // ✅ STEP 2: Import HomeALPage
+import 'admin_home_al.dart';
+import '../services/role_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 
 class GlitterParticle extends StatefulWidget {
   final double size;
@@ -204,15 +210,32 @@ class _SignInPageState extends State<SignInPage>
       final user = userCredential.user;
 
       if (user != null && user.emailVerified) {
-        // ✅ Verified → proceed to WelcomePage (NOT /home)
+
+        await http.post(
+          Uri.parse("http://192.168.10.11:3000/user-active"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "userId": user.uid,
+            "isActive": true,
+          }),
+        );
+
+        await _saveFCMToken(user.uid);
+
+        final role = RoleService.getRole(user.email ?? "");
+
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const HomeALPage(),
-            ),
-          );
+
+          if (role == UserRole.admin) {
+            // 🔥 ADMIN UI (you can later change to AdminDashboardPage)
+            Navigator.pushReplacementNamed(context, '/admin_home');
+          } else {
+            // 🔥 NORMAL USER UI
+            Navigator.pushReplacementNamed(context, '/home_al');
+          }
+
         }
+
       } else {
         // ❌ Not verified
         await FirebaseAuth.instance.signOut(); // Auto sign out
@@ -260,6 +283,25 @@ class _SignInPageState extends State<SignInPage>
 
   void _toggleTheme() {
     context.read<ThemeNotifier>().toggleTheme();
+  }
+
+  Future<void> _saveFCMToken(String userId) async {
+    try {
+      String? token = await FirebaseMessaging.instance.getToken();
+
+      if (token != null) {
+        await http.post(
+          Uri.parse("http://192.168.10.11:3000/save-token"), // same as baseUrl
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "userId": userId,
+            "token": token,
+          }),
+        );
+      }
+    } catch (e) {
+      print("FCM Token Error: $e");
+    }
   }
 
   @override
@@ -575,7 +617,7 @@ class _SignInPageState extends State<SignInPage>
                                     child: Text(
                                       _emailError,
                                       style: const TextStyle(
-                                        color: Color(0xFFFF4D4D),
+                                        color: Color.fromARGB(255, 192, 70, 70),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                       ),

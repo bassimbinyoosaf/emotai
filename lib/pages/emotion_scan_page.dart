@@ -1,22 +1,27 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui' as ui; // for ImageFilter
+import 'dart:ui' as ui;
+
+import 'package:emotai/services/emotion_result.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:provider/provider.dart'; // Theme switching via Provider
-
-// Firebase
+import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-
-// ML Kit (capture-time only)
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
 
-// Your app's theme notifier (used on other pages)
 import '../theme/app_theme.dart';
+import '../services/api_service.dart';
+import '../screens/chat_page.dart';
+import '../screens/emotion_decision_page.dart';
 
-// Floating glitter particles for background flair
+
+// ============================================================================
+// Glitter Particle Animation
+// ============================================================================
+
 class GlitterParticle extends StatefulWidget {
   final double size;
   final Color color;
@@ -44,7 +49,6 @@ class _GlitterParticleState extends State<GlitterParticle>
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 4500),
@@ -52,11 +56,13 @@ class _GlitterParticleState extends State<GlitterParticle>
 
     _opacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 0.8).chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(begin: 0.0, end: 0.8)
+            .chain(CurveTween(curve: Curves.linear)),
         weight: 33.3,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.8, end: 0.0).chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(begin: 0.8, end: 0.0)
+            .chain(CurveTween(curve: Curves.linear)),
         weight: 33.3,
       ),
       TweenSequenceItem(
@@ -67,7 +73,8 @@ class _GlitterParticleState extends State<GlitterParticle>
 
     _translateY = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: -30.0).chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(begin: 0.0, end: -30.0)
+            .chain(CurveTween(curve: Curves.linear)),
         weight: 66.7,
       ),
       TweenSequenceItem(
@@ -115,6 +122,10 @@ class _GlitterParticleState extends State<GlitterParticle>
   }
 }
 
+// ============================================================================
+// Main Emotion Scan Page
+// ============================================================================
+
 class EmotionScanPage extends StatefulWidget {
   const EmotionScanPage({super.key});
 
@@ -124,56 +135,119 @@ class EmotionScanPage extends StatefulWidget {
 
 class _EmotionScanPageState extends State<EmotionScanPage>
     with SingleTickerProviderStateMixin {
-  // Single source of truth for inner frame geometry
+  // Constants
   static const double _framePadding = 10.0;
   static const double _frameRadius = 18.0;
   static const double _frameStroke = 1.2;
 
+  // Camera & capture state
   CameraController? _controller;
   XFile? _capturedImage;
   String _emotion = "No emotion detected";
+  EmotionResult? _emotionResult;
+  bool? _photoFaceDetected;
+  bool _isLowLight = false;
+  DateTime _lastLightCheck = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _pressingCapture = false;
 
-  // Firebase Realtime Database reference
+  // Firebase
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
-  // Interests selection (using composite keys "Category|Interest")
-  final List<String> _selectedInterests = <String>[];
+  // Face detection
+  late final FaceDetector _faceDetector;
 
-  // Interest catalog
+  // Interests
+  final List<String> _selectedInterests = <String>[];
   final Map<String, List<String>> _interestCatalog = {
     'Music': [
-      'Pop', 'Rock', 'Classical', 'Jazz', 'Hip Hop', 'EDM', 'Country', 'R&B', 'Folk', 'Blues', 'Metal', 'Indie'
+      'Pop',
+      'Rock',
+      'Classical',
+      'Jazz',
+      'Hip Hop',
+      'EDM',
+      'Country',
+      'R&B',
+      'Folk',
+      'Blues',
+      'Metal',
+      'Indie'
     ],
     'Art': [
-      'Painting', 'Drawing', 'Sculpture', 'Photography', 'Digital Art', 'Calligraphy', 'Street Art', 'Ceramics', 'Illustration'
+      'Painting',
+      'Drawing',
+      'Sculpture',
+      'Photography',
+      'Digital Art',
+      'Calligraphy',
+      'Street Art',
+      'Ceramics',
+      'Illustration'
     ],
     'Singing': [
-      'Choir', 'Solo', 'Karaoke', 'A Cappella', 'Musical Theatre', 'R&B Vocals', 'Classical Vocals'
+      'Choir',
+      'Solo',
+      'Karaoke',
+      'A Cappella',
+      'Musical Theatre',
+      'R&B Vocals',
+      'Classical Vocals'
     ],
     'Dancing': [
-      'Hip Hop', 'Contemporary', 'Ballet', 'Salsa', 'Tango', 'Ballroom', 'Folk Dance', 'Breakdance', 'K-Pop'
+      'Hip Hop',
+      'Contemporary',
+      'Ballet',
+      'Salsa',
+      'Tango',
+      'Ballroom',
+      'Folk Dance',
+      'Breakdance',
+      'K-Pop'
     ],
     'Sports': [
-      'Football', 'Basketball', 'Hockey', 'Cricket', 'Tennis', 'Baseball', 'Rugby', 'Volleyball', 'Badminton',
-      'Golf', 'Swimming', 'Athletics', 'Cycling', 'Table Tennis', 'MMA', 'Boxing', 'Wrestling', 'Skateboarding',
-      'Surfing', 'Skiing', 'Snowboarding', 'Esports', 'Formula 1', 'Motorsport', 'Handball', 'Lacrosse',
-      'Field Hockey', 'Ice Hockey', 'Water Polo', 'Gymnastics', 'Snooker', 'Darts', 'Squash', 'Polo', 'Curling'
+      'Football',
+      'Basketball',
+      'Hockey',
+      'Cricket',
+      'Tennis',
+      'Baseball',
+      'Rugby',
+      'Volleyball',
+      'Badminton',
+      'Golf',
+      'Swimming',
+      'Athletics',
+      'Cycling',
+      'Table Tennis',
+      'MMA',
+      'Boxing',
+      'Wrestling',
+      'Skateboarding',
+      'Surfing',
+      'Skiing',
+      'Snowboarding',
+      'Esports',
+      'Formula 1',
+      'Motorsport',
+      'Handball',
+      'Lacrosse',
+      'Field Hockey',
+      'Ice Hockey',
+      'Water Polo',
+      'Gymnastics',
+      'Snooker',
+      'Darts',
+      'Squash',
+      'Polo',
+      'Curling'
     ],
   };
 
-  late final FaceDetector _faceDetector;
-  bool? _photoFaceDetected;
-
-  // Low light monitoring
-  bool _isLowLight = false;
-  DateTime _lastLightCheck = DateTime.fromMillisecondsSinceEpoch(0);
-
+  // Animation
   late AnimationController _fadeController;
   late Animation<double> _fadeAnim;
 
-  bool _pressingCapture = false;
-
-  // Gate flag: resolve in background; null = unknown, true = require selection, false = show scanner
+  // Interest gate
   bool? _requireInterestSelection;
 
   @override
@@ -186,17 +260,29 @@ class _EmotionScanPageState extends State<EmotionScanPage>
       ),
     );
 
-    _fadeController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(_fadeController);
     _fadeController.forward();
 
-    // Resolve interest gate in background (no UI flicker to interest page)
     _decideInterestGate();
-
-    // Initialize camera
     initializeCamera();
   }
+
+  @override
+  void dispose() {
+    _stopLightMonitoring();
+    _faceDetector.close();
+    _controller?.dispose();
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  // ========================================================================
+  // Camera Initialization
+  // ========================================================================
 
   Future<void> initializeCamera() async {
     try {
@@ -214,45 +300,26 @@ class _EmotionScanPageState extends State<EmotionScanPage>
 
       await _controller!.initialize();
       if (!mounted) return;
-
-      setState(() {}); // trigger rebuild
+      setState(() {});
       await _startLightMonitoring();
     } catch (e) {
       debugPrint("Camera init error: $e");
     }
   }
 
-  // Centralized SnackBar
-  void _showSnack(String text) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  Future<void> _startLightMonitoring() async {
+    // Implementation for light monitoring would go here
+    // This is a placeholder for the actual implementation
   }
 
-  // Check if user has at least one interest saved (value == true)
-  Future<bool> _userHasInterests() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        debugPrint("Interest gate: no user -> show interest page");
-        return false; // lead to interest page
-      }
-
-      final snap = await _dbRef.child("users").child(user.uid).child("interests").get();
-      if (!snap.exists) return false;
-
-      final val = snap.value;
-      if (val is Map) {
-        final map = Map<String, dynamic>.from(val as Map);
-        final anyTrue = map.values.any((v) => v == true);
-        return anyTrue;
-      }
-      return false;
-    } catch (e) {
-      debugPrint("Interest gate check failed: $e");
-      return false; // on error, lead to interest page
-    }
+  void _stopLightMonitoring() {
+    // Implementation for stopping light monitoring would go here
   }
 
-  // Background decision: resolve gate without briefly rendering the interest page
+  // ========================================================================
+  // Interest Gate Logic
+  // ========================================================================
+
   Future<void> _decideInterestGate() async {
     final has = await _userHasInterests();
     if (!mounted) return;
@@ -261,97 +328,60 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     });
   }
 
-  Future<void> _startLightMonitoring() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    if (_controller!.value.isStreamingImages) return;
-
+  Future<bool> _userHasInterests() async {
     try {
-      await _controller!.startImageStream((CameraImage img) {
-        final now = DateTime.now();
-        if (now.difference(_lastLightCheck).inMilliseconds < 400) return;
-        _lastLightCheck = now;
-
-        if (img.planes.isNotEmpty) {
-          final bytes = img.planes[0].bytes;
-          const step = 24;
-          int sum = 0;
-          int count = 0;
-          for (int i = 0; i < bytes.length; i += step) {
-            sum += bytes[i];
-            count++;
-            if (count >= 4000 ~/ step) break;
-          }
-          final avgLuma = count == 0 ? 255.0 : sum / count;
-          final lowLight = avgLuma < 45.0;
-          if (lowLight != _isLowLight && mounted) {
-            setState(() => _isLowLight = lowLight);
-          }
-        }
-      });
-    } catch (e) {
-      debugPrint("startImageStream error: $e");
-    }
-  }
-
-  Future<void> _stopLightMonitoring() async {
-    if (_controller == null) return;
-    if (_controller!.value.isStreamingImages) {
-      try {
-        await _controller!.stopImageStream();
-      } catch (_) {}
-    }
-  }
-
-  Future<void> captureImage() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-
-    try {
-      if (_controller!.value.isStreamingImages) {
-        await _stopLightMonitoring();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint("Interest gate: no user -> show interest page");
+        return false;
       }
 
-      final image = await _controller!.takePicture();
+      final snap = await _dbRef
+          .child("users")
+          .child(user.uid)
+          .child("interests")
+          .get();
 
-      // Face check: if no face, then set emotion to "No emotion detected"
-      bool photoHasFace;
-      try {
-        final faces = await _face_detector_process(image.path);
-        photoHasFace = faces > 0;
-      } catch (_) {
-        photoHasFace = true;
+      if (!snap.exists) return false;
+
+      final val = snap.value;
+      if (val is Map) {
+        final map = Map<String, dynamic>.from(val);
+        final anyTrue = map.values.any((v) => v == true);
+        return anyTrue;
       }
-
-      final emotionText = photoHasFace ? scanEmotion() : "No emotion detected";
-
-      setState(() {
-        _capturedImage = image;
-        _emotion = emotionText;
-        _photoFaceDetected = photoHasFace;
-      });
-
-      await _startLightMonitoring();
+      return false;
     } catch (e) {
-      debugPrint("Capture error: $e");
+      debugPrint("Interest gate check failed: $e");
+      return false;
     }
   }
 
-  // Helper: run ML Kit
-  Future<int> _face_detector_process(String path) async {
-    final inputImage = InputImage.fromFilePath(path);
-    final faces = await _faceDetector.processImage(inputImage);
-    return faces.length;
+  Future<void> _saveEmotionToFirebase(EmotionResult result) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final top = result.topEmotions.first;
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final emotionId = "emotion_$timestamp"; // 🔥 SIMPLE ID
+
+      await FirebaseDatabase.instance
+          .ref()
+          .child("users")
+          .child(user.uid)
+          .update({
+        "lastEmotion": top.emotion.toLowerCase(),
+        "emotionSource": "face",
+        "lastUpdated": timestamp,
+      });
+
+    } catch (e) {
+      debugPrint("Emotion save error: $e");
+    }
   }
 
-  // Human-readable user label
-  String _buildUserLabel(User user) {
-    return user.displayName ??
-        user.email ??
-        user.phoneNumber ??
-        user.providerData.firstOrNull?.uid ??
-        user.uid;
-  }
-
-  // Save interests and a readable profile, then proceed to main UI
   Future<bool> saveUserInterests(List<String> selectedInterests) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -378,9 +408,9 @@ class _EmotionScanPageState extends State<EmotionScanPage>
         "interests": interestsMap,
       });
 
-      _showSnack('Saved for ${_buildUserLabel(user)} • ${selectedInterests.length} interests');
+      _showSnack(
+          'Saved for ${_buildUserLabel(user)} • ${selectedInterests.length} interests');
 
-      // Flip to main UI
       if (mounted) {
         setState(() {
           _requireInterestSelection = false;
@@ -394,11 +424,144 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     }
   }
 
+  String _buildUserLabel(User user) {
+    return user.displayName ??
+        user.email ??
+        user.phoneNumber ??
+        user.providerData.firstOrNull?.uid ??
+        user.uid;
+  }
+
+  // ========================================================================
+  // Image Capture & Processing
+  // ========================================================================
+
+  Future<void> captureImage() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    try {
+      if (_controller!.value.isStreamingImages) {
+        _stopLightMonitoring();
+      }
+
+      final image = await _controller!.takePicture();
+      bool photoHasFace = false;
+      File imageToSend = File(image.path);
+
+      try {
+        final inputImage = InputImage.fromFilePath(image.path);
+        final faces = await _faceDetector.processImage(inputImage);
+        photoHasFace = faces.isNotEmpty;
+
+        if (photoHasFace) {
+          imageToSend = await cropFaceFromImage(imageToSend, faces.first);
+        }
+      } catch (e) {
+        debugPrint("Face detection error: $e");
+        photoHasFace = false;
+      }
+
+      setState(() {
+        _capturedImage = image;
+        _emotion = photoHasFace ? "Analyzing..." : "No emotion detected";
+        _photoFaceDetected = photoHasFace;
+      });
+
+      if (photoHasFace) {
+        try {
+          final result = await ApiService.sendImage(imageToSend);
+          await _saveEmotionToFirebase(result);
+          if (!mounted) return;
+          setState(() {
+            _emotion = result.emotion;
+            _emotionResult = result;
+          });
+          final topEmotion =
+    result.topEmotions.first.emotion.toLowerCase();
+      final isNegative =
+          topEmotion.contains("sad") ||
+          topEmotion.contains("anger") ||
+          topEmotion.contains("fear") ||
+          topEmotion.contains("disgust");
+
+      Future.delayed(const Duration(milliseconds: 600), () async {
+        if (!mounted) return;
+
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EmotionDecisionPage(
+                detectedEmotion: topEmotion,
+              ),
+            ),
+          );
+
+          // 🔥 RESET STATE AFTER RETURN
+          if (!mounted) return;
+
+          setState(() {
+            _capturedImage = null;
+            _emotion = "No emotion detected";
+            _emotionResult = null;
+            _photoFaceDetected = null;
+          });
+        });
+          
+        } catch (e) {
+          debugPrint("Emotion API error: $e");
+          setState(() {
+            _emotion = "Analysis failed";
+          });
+        }
+      }
+
+      await _startLightMonitoring();
+    } catch (e) {
+      debugPrint("Capture error: $e");
+    }
+  }
+
+  Future<File> cropFaceFromImage(File file, Face face) async {
+    final bytes = await file.readAsBytes();
+    final original = img.decodeImage(bytes);
+    if (original == null) return file;
+
+    final rect = Rect.fromLTRB(
+      face.boundingBox.left - face.boundingBox.width * 0.20,
+      face.boundingBox.top - face.boundingBox.height * 0.35,
+      face.boundingBox.right + face.boundingBox.width * 0.20,
+      face.boundingBox.bottom + face.boundingBox.height * 0.40,
+    );
+
+    final x = rect.left.clamp(0, original.width - 1).toInt();
+    final y = rect.top.clamp(0, original.height - 1).toInt();
+    final w = rect.width.clamp(1, original.width - x).toInt();
+    final h = rect.height.clamp(1, original.height - y).toInt();
+
+    final cropped = img.copyCrop(
+      original,
+      x: x,
+      y: y,
+      width: w,
+      height: h,
+    );
+    final mirrored = img.flipHorizontal(cropped);
+
+    final croppedFile = File('${file.path}_face.jpg');
+    await croppedFile.writeAsBytes(img.encodeJpg(mirrored));
+    return croppedFile;
+  }
+
+  // ========================================================================
+  // UI Actions
+  // ========================================================================
+
   Future<void> _shareCapture() async {
     if (_capturedImage == null) {
       _showSnack('Capture a photo first to share.');
       return;
     }
+
     try {
       final shareText = _photoFaceDetected == false
           ? 'Emotion: No emotion detected'
@@ -416,20 +579,6 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     }
   }
 
-  String scanEmotion() {
-    final emotions = [
-      "Happy 😊",
-      "Calm 🙂",
-      "Sad 😔",
-      "Neutral 😐",
-      "Excited 😄",
-      "Surprised 😮",
-    ];
-    emotions.shuffle();
-    return emotions.first;
-  }
-
-  // Theme toggle using the same Provider pattern as other pages
   void _toggleTheme() {
     try {
       context.read<ThemeNotifier>().toggleTheme();
@@ -448,16 +597,14 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     }
   }
 
-  @override
-  void dispose() {
-    _stopLightMonitoring();
-    _faceDetector.close();
-    _controller?.dispose();
-    _fadeController.dispose();
-    super.dispose();
+  void _showSnack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  // Camera card with glass layer + consistent inner frame
+  // ========================================================================
+  // UI Builders
+  // ========================================================================
+
   Widget _buildCameraCard(BuildContext context, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -472,8 +619,14 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: isDark
-                        ? [const Color(0xFFFFFFFF).withOpacity(0.08), const Color(0xFFFFFFFF).withOpacity(0.03)]
-                        : [const Color(0xFF2C3E50).withOpacity(0.10), const Color(0xFF2C3E50).withOpacity(0.04)],
+                        ? [
+                            const Color(0xFFFFFFFF).withOpacity(0.08),
+                            const Color(0xFFFFFFFF).withOpacity(0.03)
+                          ]
+                        : [
+                            const Color(0xFF2C3E50).withOpacity(0.10),
+                            const Color(0xFF2C3E50).withOpacity(0.04)
+                          ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -502,7 +655,8 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                             gradient: RadialGradient(
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(isDark ? 0.14 : 0.10),
+                                Colors.black
+                                    .withOpacity(isDark ? 0.14 : 0.10),
                               ],
                               center: Alignment.center,
                               radius: 1.0,
@@ -516,7 +670,7 @@ class _EmotionScanPageState extends State<EmotionScanPage>
               ),
             ),
 
-            // Stroke on top using same geometry
+            // Stroke on top
             Positioned.fill(
               child: Padding(
                 padding: const EdgeInsets.all(_framePadding),
@@ -525,7 +679,8 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                     painter: _RoundedFramePainter(
                       radius: _frameRadius,
                       stroke: _frameStroke,
-                      color: Colors.white.withOpacity(isDark ? 0.28 : 0.22),
+                      color:
+                          Colors.white.withOpacity(isDark ? 0.28 : 0.22),
                     ),
                   ),
                 ),
@@ -549,7 +704,9 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                     ),
                   const SizedBox(height: 8),
                   _HintPill(
-                    color: isDark ? const Color(0xFF1E293B) : Colors.black87,
+                    color: isDark
+                        ? const Color(0xFF1E293B)
+                        : Colors.black87,
                     icon: Icons.center_focus_strong,
                     text: "Center your face inside the frame",
                     textColor: Colors.white,
@@ -567,7 +724,8 @@ class _EmotionScanPageState extends State<EmotionScanPage>
               child: Center(
                 child: GestureDetector(
                   onTapDown: (_) => setState(() => _pressingCapture = true),
-                  onTapCancel: () => setState(() => _pressingCapture = false),
+                  onTapCancel: () =>
+                      setState(() => _pressingCapture = false),
                   onTapUp: (_) => setState(() => _pressingCapture = false),
                   onTap: captureImage,
                   child: AnimatedScale(
@@ -580,15 +738,23 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: isDark
-                              ? [const Color(0xFF8B7FFF), const Color(0xFFB4A7FF)]
-                              : [const Color(0xFF0A7EA4), const Color(0xFF3DA5C8)],
+                              ? [
+                                  const Color(0xFF8B7FFF),
+                                  const Color(0xFFB4A7FF)
+                                ]
+                              : [
+                                  const Color(0xFF0A7EA4),
+                                  const Color(0xFF3DA5C8)
+                                ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: (isDark ? const Color(0xFF8B7FFF) : const Color(0xFF0A7EA4))
+                            color: (isDark
+                                    ? const Color(0xFF8B7FFF)
+                                    : const Color(0xFF0A7EA4))
                                 .withOpacity(0.28),
                             blurRadius: 18,
                             offset: const Offset(0, 10),
@@ -599,7 +765,11 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                           width: 1.6,
                         ),
                       ),
-                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 26),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                     ),
                   ),
                 ),
@@ -611,14 +781,11 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     );
   }
 
-  // After-capture card
-  Widget _buildAfterCaptureCard(BuildContext context, bool isDark, BoxConstraints cons) {
+  Widget _buildAfterCaptureCard(
+      BuildContext context, bool isDark, BoxConstraints cons) {
     final theme = Theme.of(context);
-
     final maxH = cons.maxHeight;
     final imageH = math.max(100.0, math.min(150.0, maxH * 0.45));
-
-    // Responsive extra gap that scales with available height and safe area
     final safeBottom = MediaQuery.of(context).padding.bottom;
     final extraGap = math.max(
       16.0,
@@ -637,8 +804,14 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: isDark
-                        ? [const Color(0xFFFFFFFF).withOpacity(0.14), const Color(0xFFFFFFFF).withOpacity(0.06)]
-                        : [const Color(0xFF2C3E50).withOpacity(0.12), const Color(0xFF2C3E50).withOpacity(0.05)],
+                        ? [
+                            const Color(0xFFFFFFFF).withOpacity(0.14),
+                            const Color(0xFFFFFFFF).withOpacity(0.06)
+                          ]
+                        : [
+                            const Color(0xFF2C3E50).withOpacity(0.12),
+                            const Color(0xFF2C3E50).withOpacity(0.05)
+                          ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -647,106 +820,146 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                     width: 1.2,
                   ),
                 ),
-                child: Column(
-                  children: [
-                    if (_capturedImage != null)
-                      Padding(
-                        padding: const EdgeInsets.all(_framePadding),
-                        child: Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(_frameRadius),
-                              child: SizedBox(
-                                height: imageH - (_framePadding * 2),
-                                width: double.infinity,
-                                child: FittedBox(
-                                  fit: BoxFit.cover,
-                                  child: Image.file(
-                                    File(_capturedImage!.path),
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_capturedImage != null)
+                        Padding(
+                          padding: const EdgeInsets.all(_framePadding),
+                          child: Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(_frameRadius),
+                                child: SizedBox(
+                                  height: imageH - (_framePadding * 2),
+                                  width: double.infinity,
+                                  child: FittedBox(
+                                    fit: BoxFit.cover,
+                                    child: Image.file(
+                                      File(_capturedImage!.path),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: CustomPaint(
-                                  painter: _RoundedFramePainter(
-                                    radius: _frameRadius,
-                                    stroke: _frameStroke,
-                                    color: Colors.white.withOpacity(isDark ? 0.28 : 0.22),
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _RoundedFramePainter(
+                                      radius: _frameRadius,
+                                      stroke: _frameStroke,
+                                      color: Colors.white.withOpacity(
+                                          isDark ? 0.28 : 0.22),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                      child: Column(
-                        children: [
-                          Text(
-                            "Detected Emotion",
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: isDark ? Colors.white70 : const Color(0xFF687076),
-                              letterSpacing: 0.2,
-                            ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          _EmotionChip(text: _emotion, isDark: isDark),
-
-                          // Optional face warning
-                          if (_photoFaceDetected == false) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.tag_faces_outlined, size: 16, color: Colors.orange),
-                                SizedBox(width: 6),
-                                Text(
-                                  "No face recognized in the photo. Try retaking.",
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              "Detected Emotion",
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: isDark
+                                    ? Colors.white70
+                                    : const Color(0xFF687076),
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            _EmotionChip(
+                              text: _emotionResult?.topEmotions.first.emotion ??
+                                  _emotion,
+                              isDark: isDark,
+                            ),
+                            const SizedBox(height: 10),
+                            if (_emotionResult != null)
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _emotionResult!.topEmotions
+                                    .skip(1)
+                                    .take(2)
+                                    .map(
+                                      (e) => _EmotionChip(
+                                        text:
+                                            "${e.emotion} ${(e.score * 100).toStringAsFixed(0)}%",
+                                        isDark: isDark,
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            if (_photoFaceDetected == false) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(
+                                    Icons.tag_faces_outlined,
+                                    size: 16,
                                     color: Colors.orange,
                                   ),
+                                  SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      "No face recognized in the photo. Try retaking.",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: Colors.white
+                                  .withOpacity(isDark ? 0.15 : 0.12),
+                            ),
+                            const SizedBox(height: 16),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: [
+                                _ActionPill(
+                                  label: "Retake",
+                                  icon: Icons.refresh,
+                                  isDark: isDark,
+                                  onTap: () {
+                                    setState(() {
+                                      _capturedImage = null;
+                                      _emotion = "No emotion detected";
+                                      _photoFaceDetected = null;
+                                    });
+                                  },
+                                ),
+                                _ActionPill(
+                                  label: "Share",
+                                  icon: Icons.share_outlined,
+                                  isDark: isDark,
+                                  onTap: _shareCapture,
                                 ),
                               ],
                             ),
                           ],
-
-                          // Extra safe space to move action buttons down a bit more
-                          SizedBox(height: extraGap),
-
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 10,
-                            runSpacing: 12, // slightly larger run spacing for better touch targets
-                            children: [
-                              _ActionPill(
-                                label: "Retake",
-                                icon: Icons.refresh,
-                                isDark: isDark,
-                                onTap: () {
-                                  setState(() {
-                                    _capturedImage = null;
-                                    _emotion = "No emotion detected";
-                                    _photoFaceDetected = null;
-                                  });
-                                },
-                              ),
-                              _ActionPill(
-                                label: "Share",
-                                icon: Icons.share_outlined,
-                                isDark: isDark,
-                                onTap: _shareCapture,
-                              ),
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -756,10 +969,11 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     );
   }
 
-  // Interest selection section (FilterChip-based)
-  Widget _buildInterestSection(String category, List<String> items, bool isDark) {
+  Widget _buildInterestSection(
+      String category, List<String> items, bool isDark) {
     final headerColor = isDark ? Colors.white : const Color(0xFF2C3E50);
-    final subColor = isDark ? Colors.white70 : const Color(0xFF2C3E50).withOpacity(0.75);
+    final subColor =
+        isDark ? Colors.white70 : const Color(0xFF2C3E50).withOpacity(0.75);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -781,7 +995,6 @@ class _EmotionScanPageState extends State<EmotionScanPage>
             children: items.map((interest) {
               final id = '$category|$interest';
               final selected = _selectedInterests.contains(id);
-
               return FilterChip(
                 label: Text(
                   interest,
@@ -789,7 +1002,9 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                     fontWeight: FontWeight.w800,
                     color: selected
                         ? Colors.white
-                        : (isDark ? Colors.white70 : const Color(0xFF2C3E50)),
+                        : (isDark
+                            ? Colors.white70
+                            : const Color(0xFF2C3E50)),
                   ),
                 ),
                 selected: selected,
@@ -798,11 +1013,16 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                     if (selected) {
                       _selectedInterests.remove(id);
                     } else {
+                      if (_selectedInterests.length >= 5) {
+                        _showSnack("You can select only up to 5 interests");
+                        return;
+                      }
                       _selectedInterests.add(id);
                     }
                   });
                 },
-                selectedColor: isDark ? const Color(0xFF8B7FFF) : const Color(0xFF0A7EA4),
+                selectedColor:
+                    isDark ? const Color(0xFF8B7FFF) : const Color(0xFF0A7EA4),
                 backgroundColor: isDark
                     ? Colors.white.withOpacity(0.08)
                     : Colors.white.withOpacity(0.85),
@@ -812,7 +1032,9 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                   side: BorderSide(
                     color: (selected
                             ? Colors.white
-                            : (isDark ? Colors.white70 : const Color(0xFF2C3E50)))
+                            : (isDark
+                                ? Colors.white70
+                                : const Color(0xFF2C3E50)))
                         .withOpacity(0.25),
                     width: 1,
                   ),
@@ -834,7 +1056,6 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     );
   }
 
-  // Interest selection page (only shown when interests are NOT saved; otherwise never interferes)
   Widget _buildInterestSelectionGate(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final headerColor = isDark ? Colors.white : const Color(0xFF2C3E50);
@@ -844,8 +1065,17 @@ class _EmotionScanPageState extends State<EmotionScanPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isDark
-                ? const [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C3E64)]
-                : const [Color(0xFFa8edea), Color(0xFFfed6e3), Color(0xFFa6c1ee), Color(0xFFfbc2eb)],
+                ? const [
+                    Color(0xFF0F2027),
+                    Color(0xFF203A43),
+                    Color(0xFF2C3E64)
+                  ]
+                : const [
+                    Color(0xFFa8edea),
+                    Color(0xFFfed6e3),
+                    Color(0xFFa6c1ee),
+                    Color(0xFFfbc2eb)
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -857,7 +1087,11 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                 child: Row(
                   children: [
-                    _HeaderIcon(icon: Icons.arrow_back, onTap: _goBack, isDark: isDark),
+                    _HeaderIcon(
+                      icon: Icons.arrow_back,
+                      onTap: _goBack,
+                      isDark: isDark,
+                    ),
                     const Spacer(),
                     _HeaderIcon(
                       icon: isDark ? Icons.wb_sunny : Icons.nightlight_round,
@@ -892,23 +1126,21 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                         ),
                       ),
                       const SizedBox(height: 20),
-
-                      // Sections
                       ..._interestCatalog.entries.map(
                         (e) => _buildInterestSection(e.key, e.value, isDark),
                       ),
-
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          Icon(Icons.check_circle_outline,
-                              size: 18,
-                              color: isDark
-                                  ? Colors.white
-                                  : const Color(0xFF2C3E50)),
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 18,
+                            color:
+                                isDark ? Colors.white : const Color(0xFF2C3E50),
+                          ),
                           const SizedBox(width: 6),
                           Text(
-                            "Selected: ${_selectedInterests.length}",
+                            "Selected: ${_selectedInterests.length} / 5",
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               color: isDark
@@ -933,7 +1165,6 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
@@ -942,19 +1173,19 @@ class _EmotionScanPageState extends State<EmotionScanPage>
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                            backgroundColor:
-                                isDark ? const Color(0xFF8B7FFF) : const Color(0xFF0A7EA4),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            backgroundColor: isDark
+                                ? const Color(0xFF8B7FFF)
+                                : const Color(0xFF0A7EA4),
                           ),
                           onPressed: () async {
                             if (_selectedInterests.isEmpty) {
-                              _showSnack("Please select at least one interest.");
+                              _showSnack(
+                                  "Please select at least one interest.");
                               return;
                             }
-                            final ok = await saveUserInterests(_selectedInterests);
-                            if (ok) {
-                              // Gate flips to scanner automatically after saving
-                            }
+                            await saveUserInterests(_selectedInterests);
                           },
                           label: const Text(
                             "Save & Continue",
@@ -973,15 +1204,12 @@ class _EmotionScanPageState extends State<EmotionScanPage>
     );
   }
 
-  // Build decides which page to show based on the interest gate; NO interest-page flicker
   @override
   Widget build(BuildContext context) {
-    // Only show interest selection AFTER the background check resolves to true.
     if (_requireInterestSelection == true) {
       return _buildInterestSelectionGate(context);
     }
 
-    // Main Emotion Scanner UI
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.of(context).size;
     final isCompact = size.height < 700;
@@ -992,8 +1220,17 @@ class _EmotionScanPageState extends State<EmotionScanPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isDark
-                ? const [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C3E64)]
-                : const [Color(0xFFa8edea), Color(0xFFfed6e3), Color(0xFFa6c1ee), Color(0xFFfbc2eb)],
+                ? const [
+                    Color(0xFF0F2027),
+                    Color(0xFF203A43),
+                    Color(0xFF2C3E64)
+                  ]
+                : const [
+                    Color(0xFFa8edea),
+                    Color(0xFFfed6e3),
+                    Color(0xFFa6c1ee),
+                    Color(0xFFfbc2eb)
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -1006,8 +1243,14 @@ class _EmotionScanPageState extends State<EmotionScanPage>
               final x = math.Random().nextDouble() * size.width;
               final y = math.Random().nextDouble() * size.height * 0.7;
               final colorsArr = isDark
-                  ? [const Color(0xFF8CC8FF).withOpacity(0.6), const Color(0xFFB496FF).withOpacity(0.55)]
-                  : [const Color(0xFFFFFFFF).withOpacity(0.9), const Color(0xFFF0F0FF).withOpacity(0.85)];
+                  ? [
+                      const Color(0xFF8CC8FF).withOpacity(0.6),
+                      const Color(0xFFB496FF).withOpacity(0.55)
+                    ]
+                  : [
+                      const Color(0xFFFFFFFF).withOpacity(0.9),
+                      const Color(0xFFF0F0FF).withOpacity(0.85)
+                    ];
               final color = colorsArr[math.Random().nextInt(colorsArr.length)];
               return GlitterParticle(
                 key: ValueKey(i),
@@ -1023,109 +1266,127 @@ class _EmotionScanPageState extends State<EmotionScanPage>
               builder: (_, __) {
                 return Opacity(
                   opacity: _fadeAnim.value,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 16),
-                    child: Column(
-                      children: [
-                        // Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _HeaderIcon(
-                              icon: Icons.arrow_back,
-                              onTap: _goBack,
-                              isDark: isDark,
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      'Emotion Scanner',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.w900,
-                                        color: isDark ? Colors.white : const Color(0xFF2C3E50),
-                                        letterSpacing: -0.8,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Real-time detection',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark
-                                            ? const Color(0xFFFFFFFF).withOpacity(0.85)
-                                            : const Color(0xFF2C3E50).withOpacity(0.8),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            _HeaderIcon(
-                              icon: isDark ? Icons.wb_sunny : Icons.nightlight_round,
-                              onTap: _toggleTheme,
-                              isDark: isDark,
-                            ),
-                          ],
-                        ),
-
-                        SizedBox(height: gap),
-
-                        // Content
-                        Expanded(
-                          child: Column(
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        children: [
+                          // Header
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Expanded(
-                                flex: 6,
-                                child: _buildCameraCard(context, isDark),
+                              _HeaderIcon(
+                                icon: Icons.arrow_back,
+                                onTap: _goBack,
+                                isDark: isDark,
                               ),
-                              SizedBox(height: gap),
                               Expanded(
-                                flex: 4,
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 250),
-                                  switchInCurve: Curves.easeOut,
-                                  switchOutCurve: Curves.easeIn,
-                                  child: _capturedImage == null
-                                      ? Container(
-                                          key: const ValueKey('placeholder'),
-                                          width: double.infinity,
-                                          margin: const EdgeInsets.symmetric(horizontal: 12),
-                                          padding: const EdgeInsets.all(18),
-                                          decoration: BoxDecoration(
-                                            color: isDark ? Colors.white.withOpacity(0.06) : Colors.white.withOpacity(0.75),
-                                            borderRadius: BorderRadius.circular(18),
-                                            border: Border.all(
-                                              color: Colors.white.withOpacity(isDark ? 0.22 : 0.18),
-                                              width: 1.2,
-                                            ),
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            "Your result will appear here after capture",
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              color: isDark ? Colors.white70 : const Color(0xFF2C3E50).withOpacity(0.7),
-                                            ),
-                                          ),
-                                        )
-                                      : LayoutBuilder(
-                                          builder: (c2, c2Cons) =>
-                                              _buildAfterCaptureCard(context, isDark, c2Cons),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        'Emotion Scanner',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.w900,
+                                          color: isDark
+                                              ? Colors.white
+                                              : const Color(0xFF2C3E50),
+                                          letterSpacing: -0.8,
                                         ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Real-time detection',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark
+                                              ? const Color(0xFFFFFFFF)
+                                                  .withOpacity(0.85)
+                                              : const Color(0xFF2C3E50)
+                                                  .withOpacity(0.8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                              ),
+                              _HeaderIcon(
+                                icon: isDark
+                                    ? Icons.wb_sunny
+                                    : Icons.nightlight_round,
+                                onTap: _toggleTheme,
+                                isDark: isDark,
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          SizedBox(height: gap),
+
+                          // Content
+                          Expanded(
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  flex: 6,
+                                  child: _buildCameraCard(context, isDark),
+                                ),
+                                SizedBox(height: gap),
+                                Expanded(
+                                  flex: 4,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 250),
+                                    switchInCurve: Curves.easeOut,
+                                    switchOutCurve: Curves.easeIn,
+                                    child: _capturedImage == null
+                                        ? Container(
+                                            key: const ValueKey('placeholder'),
+                                            width: double.infinity,
+                                            margin: const EdgeInsets.symmetric(
+                                                horizontal: 12),
+                                            padding: const EdgeInsets.all(18),
+                                            decoration: BoxDecoration(
+                                              color: isDark
+                                                  ? Colors.white
+                                                      .withOpacity(0.06)
+                                                  : Colors.white
+                                                      .withOpacity(0.75),
+                                              borderRadius:
+                                                  BorderRadius.circular(18),
+                                              border: Border.all(
+                                                color: Colors.white.withOpacity(
+                                                    isDark ? 0.22 : 0.18),
+                                                width: 1.2,
+                                              ),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              "Your result will appear here after capture",
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: isDark
+                                                    ? Colors.white70
+                                                    : const Color(0xFF2C3E50)
+                                                        .withOpacity(0.7),
+                                              ),
+                                            ),
+                                          )
+                                        : LayoutBuilder(
+                                            builder: (c2, c2Cons) =>
+                                                _buildAfterCaptureCard(
+                                                    context, isDark, c2Cons),
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -1138,11 +1399,13 @@ class _EmotionScanPageState extends State<EmotionScanPage>
   }
 }
 
-/* ===== Helper widgets ===== */
+// ============================================================================
+// Helper Widgets
+// ============================================================================
 
-// Fills the given size (the inner frame) while preserving preview aspect via BoxFit.cover.
 class _CameraPreviewCover extends StatelessWidget {
   final CameraController? controller;
+
   const _CameraPreviewCover({required this.controller});
 
   @override
@@ -1167,7 +1430,6 @@ class _CameraPreviewCover extends StatelessWidget {
   }
 }
 
-// Precise stroke painter matching the clip RRect.
 class _RoundedFramePainter extends CustomPainter {
   final double radius;
   final double stroke;
@@ -1183,7 +1445,6 @@ class _RoundedFramePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
-
     final p = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -1256,6 +1517,7 @@ class _HintPill extends StatelessWidget {
 class _EmotionChip extends StatelessWidget {
   final String text;
   final bool isDark;
+
   const _EmotionChip({required this.text, required this.isDark});
 
   @override
@@ -1263,18 +1525,30 @@ class _EmotionChip extends StatelessWidget {
     final colors = isDark
         ? [const Color(0xFF8B7FFF), const Color(0xFFB4A7FF)]
         : [const Color(0xFF0A7EA4), const Color(0xFF3DA5C8)];
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+          ),
         ],
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13.5),
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 13.5,
+        ),
       ),
     );
   }
@@ -1299,8 +1573,9 @@ class _ActionPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final baseColor = isDark ? Colors.white : const Color(0xFF2C3E50);
     final fg = dimmed ? baseColor.withOpacity(0.7) : baseColor;
-    final bg =
-        isDark ? Colors.white.withOpacity(dimmed ? 0.05 : 0.08) : Colors.white.withOpacity(dimmed ? 0.5 : 0.6);
+    final bg = isDark
+        ? Colors.white.withOpacity(dimmed ? 0.05 : 0.08)
+        : Colors.white.withOpacity(dimmed ? 0.5 : 0.6);
 
     return InkWell(
       onTap: onTap,
@@ -1322,7 +1597,11 @@ class _ActionPill extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               label,
-              style: TextStyle(fontWeight: FontWeight.w800, color: fg, fontSize: 13.5),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: fg,
+                fontSize: 13.5,
+              ),
             ),
           ],
         ),
@@ -1335,7 +1614,12 @@ class _HeaderIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final bool isDark;
-  const _HeaderIcon({required this.icon, required this.onTap, required this.isDark});
+
+  const _HeaderIcon({
+    required this.icon,
+    required this.onTap,
+    required this.isDark,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1348,13 +1632,26 @@ class _HeaderIcon extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isDark
-                ? [const Color(0xFFFFFFFF).withOpacity(0.3), const Color(0xFFFFFFFF).withOpacity(0.1)]
-                : [const Color(0xFF2C3E50).withOpacity(0.2), const Color(0xFF2C3E50).withOpacity(0.1)],
+                ? [
+                    const Color(0xFFFFFFFF).withOpacity(0.3),
+                    const Color(0xFFFFFFFF).withOpacity(0.1)
+                  ]
+                : [
+                    const Color(0xFF2C3E50).withOpacity(0.2),
+                    const Color(0xFF2C3E50).withOpacity(0.1)
+                  ],
           ),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.20), width: 1),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.20),
+            width: 1,
+          ),
         ),
-        child: Icon(icon, size: 22, color: isDark ? Colors.white : const Color(0xFF2C3E50)),
+        child: Icon(
+          icon,
+          size: 22,
+          color: isDark ? Colors.white : const Color(0xFF2C3E50),
+        ),
       ),
     );
   }

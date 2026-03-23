@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // ✅ Required for signOut
 import '../utils/app_prefs.dart';
+import '../services/role_service.dart'; 
 
 class NavItem {
   final String name;
@@ -40,6 +41,17 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
       parent: _transitionController,
       curve: Curves.elasticOut,
     );
+
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+    final modalRoute = ModalRoute.of(context);
+    if (modalRoute != null && modalRoute.settings.name != null) {
+      _updateActiveIndex(
+        modalRoute.settings.name!,
+        _currentNavItems,
+      );
+    }
+  });
+
   }
 
   @override
@@ -53,19 +65,36 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
     final isLoggedIn = user != null && user.emailVerified;
 
     if (isLoggedIn) {
+      final role = RoleService.getRole(user!.email ?? "");
+
+      // 🔥 ADMIN NAVBAR
+      if (role == UserRole.admin) {
+        return [
+          NavItem(name: 'Admin', icon: Icons.admin_panel_settings, route: '/admin_home'),
+          NavItem(name: 'Dashboard', icon: Icons.analytics, route: '/admin_dashboard'),
+          NavItem(name: 'Profile', icon: Icons.person, route: '/profile'),
+          NavItem(name: 'Sign Out', icon: Icons.logout, route: '/signout'),
+        ];
+      }
+
+      // 👤 NORMAL USER NAVBAR
       return [
         NavItem(name: 'Home', icon: Icons.home, route: '/home_al'),
-        NavItem(name: 'About', icon: Icons.info_outline, route: '/about'),
+        NavItem(name: 'Dashboard', icon: Icons.dashboard, route: '/dashboard'),
+        NavItem(name: 'Profile', icon: Icons.person, route: '/profile'),
         NavItem(name: 'Sign Out', icon: Icons.logout, route: '/signout'),
       ];
-    } else {
-      return [
-        NavItem(name: 'Home', icon: Icons.home, route: '/home'),
-        NavItem(name: 'About', icon: Icons.info_outline, route: '/about'),
-        NavItem(name: 'Sign In', icon: Icons.login_outlined, route: '/signin'),
-      ];
     }
-  }
+
+    // 🚪 NOT LOGGED IN
+    return [
+      NavItem(name: 'Home', icon: Icons.home, route: '/home'),
+      NavItem(name: 'About', icon: Icons.info_outline, route: '/about'),
+      NavItem(name: 'Sign In', icon: Icons.login_outlined, route: '/signin'),
+    ];
+}
+
+  
 
   bool _isActive(String route, String currentRoute) {
     final normalizedRoute = route.replaceAll(RegExp(r'/$'), '');
@@ -73,13 +102,17 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
 
     // ✅ FIX 2: Treat both /home and /home_al as root home routes
     if (normalizedRoute == '/home' || normalizedRoute == '/home_al') {
-      if (normalizedCurrent == '' ||
-          normalizedCurrent == '/' ||
-          normalizedCurrent == '/home' ||
-          normalizedCurrent == '/home_al') {
-        return true;
-      }
-    }
+    return normalizedCurrent == '/home' ||
+        normalizedCurrent == '/home_al' ||
+        normalizedCurrent == '' ||
+        normalizedCurrent == '/';
+  }
+
+  // ✅ Handle admin route separately
+  if (normalizedRoute == '/admin_home') {
+    return normalizedCurrent == '/admin_home';
+  
+  }
 
     return normalizedCurrent == normalizedRoute ||
         normalizedCurrent.startsWith('$normalizedRoute/');
@@ -97,7 +130,9 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
       setState(() {
         _activeIndex = newIndex;
       });
-      _transitionController.forward(from: 0);
+      if (!_transitionController.isAnimating) {
+        _transitionController.forward(from: 0);
+      }
     }
   }
 
@@ -130,15 +165,21 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
     final modalRoute = ModalRoute.of(context);
     final displayNavItems = _currentNavItems;
 
-    // ✅ FIX 1: Force correct fallback route based on auth state
-    final user = FirebaseAuth.instance.currentUser;
-    final isLoggedIn = user != null && user.emailVerified;
 
-    // If ModalRoute is null (e.g., first frame), use auth-aware fallback
-    final currentRoute = modalRoute?.settings.name ??
-        (isLoggedIn ? '/home_al' : '/home');
+    if (modalRoute == null || modalRoute.settings.name == null) {
+      return const SizedBox.shrink(); // wait for route
+    }
 
-    _updateActiveIndex(currentRoute, displayNavItems);
+    final currentRoute = modalRoute.settings.name!;
+
+    final newIndex =
+          displayNavItems.indexWhere((item) => _isActive(item.route, currentRoute));
+
+      if (newIndex != -1 && newIndex != _activeIndex) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _updateActiveIndex(currentRoute, displayNavItems);
+        });
+      }
 
     if (_shouldHideNavbar(currentRoute)) {
       return const SizedBox.shrink();
@@ -214,7 +255,7 @@ class _NavbarState extends State<Navbar> with SingleTickerProviderStateMixin {
                     children: displayNavItems.asMap().entries.map((entry) {
                       final index = entry.key;
                       final item = entry.value;
-                      final active = _isActive(item.route, currentRoute);
+                      final active = index == _activeIndex;
                       final isHovered = _hoveredIndex == index;
 
                       return Expanded(

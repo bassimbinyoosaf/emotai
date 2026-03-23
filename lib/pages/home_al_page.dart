@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/navbar.dart';
 import '../theme/app_theme.dart';
 import '../utils/android_toast.dart';
+import '../screens/chat_page.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 // GlitterParticle (unchanged)
 class GlitterParticle extends StatefulWidget {
@@ -42,7 +44,7 @@ class _GlitterParticleState extends State<GlitterParticle>
   @override
   void initState() {
     super.initState();
-
+  
     _opacityController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 1500 + (math.Random().nextDouble() * 2000).toInt()),
@@ -349,9 +351,25 @@ class _HomeALPageState extends State<HomeALPage> with TickerProviderStateMixin {
 
   final ScrollController _listScrollController = ScrollController();
 
+  bool hasChatSummary = false;
+  bool isLoadingSummary = true;
+
   @override
   void initState() {
     super.initState();
+    FirebaseDatabase.instance
+  .ref("users/${FirebaseAuth.instance.currentUser!.uid}/chat_memory/summary")
+  .onValue
+  .listen((event) {
+    final snapshot = event.snapshot;
+
+    if (!mounted) return;
+
+    setState(() {
+      hasChatSummary = snapshot.exists && snapshot.value != null;
+      isLoadingSummary = false;
+    });
+  });
 
     _fadeController = AnimationController(
       vsync: this,
@@ -402,6 +420,64 @@ class _HomeALPageState extends State<HomeALPage> with TickerProviderStateMixin {
       _scrollController.value = _listScrollController.offset / 1000;
     });
   }
+
+  Future<void> checkChatSummary() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final ref = FirebaseDatabase.instance
+        .ref("users/${user.uid}/chat_memory/summary");
+
+    final snapshot = await ref.get();
+
+    setState(() {
+      hasChatSummary = snapshot.value != null && snapshot.value.toString().isNotEmpty;
+      isLoadingSummary = false;
+    });
+  }
+
+  Future<void> continueChat() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    final ref = FirebaseDatabase.instance
+        .ref("users/${user.uid}/emotions");
+
+    final snapshot = await ref.get();
+
+    if (!snapshot.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No previous emotion found")),
+      );
+      return;
+    }
+
+    final data = snapshot.value as Map;
+
+    // 🔥 get latest emotion
+    String latestEmotion = "Neutral";
+    int latestTime = 0;
+
+    data.forEach((key, value) {
+      final ts = value["timestamp"] ?? 0;
+
+      if (ts > latestTime) {
+        latestTime = ts;
+        latestEmotion = value["emotion_type"] ?? "Neutral";
+      }
+    });
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+    builder: (_) => ChatPage(
+      detectedEmotion: latestEmotion,
+      isFromContinue: true, // 🔥 THIS IS THE KEY
+      ),
+    ),
+  );
+}
 
   @override
   void dispose() {
@@ -772,7 +848,83 @@ class _HomeALPageState extends State<HomeALPage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 16),
 
+                            // 🔥 CONTINUE CHAT BUTTON (FINAL VERSION)
+                            InkWell(
+                              onTap: (!isLoadingSummary && hasChatSummary) ? continueChat : null,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: (!isLoadingSummary && hasChatSummary)
+                                      ? LinearGradient(
+                                          colors: isDark
+                                              ? [
+                                                  const Color(0xFFFF6B6B),
+                                                  const Color(0xFFFF8E8E),
+                                                ]
+                                              : [
+                                                  const Color(0xFF6C63FF),
+                                                  const Color(0xFF9A94FF),
+                                                ],
+                                        )
+                                      : LinearGradient(
+                                          colors: [
+                                            Colors.grey.shade400,
+                                            Colors.grey.shade300,
+                                          ],
+                                        ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(18),
+                                  child: Center(
+                                    child: isLoadingSummary
+                                        // 🔄 LOADING STATE
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+
+                                        // ❌ DISABLED STATE
+                                        : !hasChatSummary
+                                            ? Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: const [
+                                                  Text(
+                                                    'No Previous Chat',
+                                                    style: TextStyle(
+                                                      fontSize: 17,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: Colors.black38,
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 10),
+                                                  Icon(Icons.chat_bubble_outline, color: Colors.black38),
+                                                ],
+                                              )
+
+                                            // ✅ ENABLED STATE
+                                            : Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: const [
+                                                  Text(
+                                                    'Continue Chat',
+                                                    style: TextStyle(
+                                                      fontSize: 17,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  SizedBox(width: 10),
+                                                  Icon(Icons.chat, color: Colors.white),
+                                                ],
+                                              ),
+                                  ),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 24),
                           ],
                         ),
