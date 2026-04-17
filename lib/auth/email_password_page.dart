@@ -65,9 +65,7 @@ class _EmailPasswordPageState extends State<EmailPasswordPage> {
         await auth.signOut();
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' ||
-          e.code == 'invalid-credential' ||
-          e.code == 'invalid-login-credentials') {
+      if (e.code == 'user-not-found') {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -77,9 +75,15 @@ class _EmailPasswordPageState extends State<EmailPasswordPage> {
             ),
           ),
         );
-      } else if (e.code == 'wrong-password') {
+      } else if (e.code == 'wrong-password' ||
+          e.code == 'invalid-credential' ||
+          e.code == 'invalid-login-credentials') {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Wrong password")),
+          const SnackBar(content: Text("Invalid email or password")),
+        );
+      } else if (e.code == 'invalid-email') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invalid email")),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

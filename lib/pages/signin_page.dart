@@ -11,7 +11,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-
 class GlitterParticle extends StatefulWidget {
   final double size;
   final Color color;
@@ -45,30 +44,30 @@ class _GlitterParticleState extends State<GlitterParticle>
     );
     _opacity = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 0.8)
-            .chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(
+          begin: 0.0,
+          end: 0.8,
+        ).chain(CurveTween(curve: Curves.linear)),
         weight: 33.3,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.8, end: 0.0)
-            .chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(
+          begin: 0.8,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.linear)),
         weight: 33.3,
       ),
-      TweenSequenceItem(
-        tween: ConstantTween<double>(0.0),
-        weight: 33.4,
-      ),
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 33.4),
     ]).animate(_controller);
     _translateY = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: -30.0)
-            .chain(CurveTween(curve: Curves.linear)),
+        tween: Tween<double>(
+          begin: 0.0,
+          end: -30.0,
+        ).chain(CurveTween(curve: Curves.linear)),
         weight: 66.7,
       ),
-      TweenSequenceItem(
-        tween: ConstantTween<double>(0.0),
-        weight: 33.3,
-      ),
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 33.3),
     ]).animate(_controller);
 
     Future.delayed(
@@ -119,8 +118,7 @@ class SignInPage extends StatefulWidget {
   State<SignInPage> createState() => _SignInPageState();
 }
 
-class _SignInPageState extends State<SignInPage>
-    with TickerProviderStateMixin {
+class _SignInPageState extends State<SignInPage> with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _showPassword = false;
@@ -145,9 +143,10 @@ class _SignInPageState extends State<SignInPage>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(_fadeController);
-    _slideAnim = Tween<double>(begin: -30.0, end: 0.0).animate(
-      CurvedAnimation(parent: _slideController, curve: Curves.easeOut),
-    );
+    _slideAnim = Tween<double>(
+      begin: -30.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
     _fadeController.forward();
     _slideController.forward();
   }
@@ -183,7 +182,9 @@ class _SignInPageState extends State<SignInPage>
       setState(() => _emailError = 'Email is required');
       isValid = false;
     } else if (!_validateEmail(email)) {
-      setState(() => _emailError = 'Please enter a valid email (example@mail.com)');
+      setState(
+        () => _emailError = 'Please enter a valid email (example@mail.com)',
+      );
       isValid = false;
     }
 
@@ -202,30 +203,26 @@ class _SignInPageState extends State<SignInPage>
     try {
       // 🔥 Firebase Auth: Sign in
       final userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+          .signInWithEmailAndPassword(email: email, password: password);
 
       final user = userCredential.user;
 
-      if (user != null && user.emailVerified) {
+      // Force refresh to get latest emailVerified status from Firebase server
+      await user?.reload();
+      final freshUser = FirebaseAuth.instance.currentUser;
 
+      if (freshUser != null && freshUser.emailVerified) {
         await http.post(
-          Uri.parse("http://192.168.10.11:3000/user-active"),
+          Uri.parse("http://192.168.1.4:3000/user-active"),
           headers: {"Content-Type": "application/json"},
-          body: jsonEncode({
-            "userId": user.uid,
-            "isActive": true,
-          }),
+          body: jsonEncode({"userId": freshUser.uid, "isActive": true}),
         );
 
-        await _saveFCMToken(user.uid);
+        await _saveFCMToken(freshUser.uid);
 
-        final role = RoleService.getRole(user.email ?? "");
+        final role = RoleService.getRole(freshUser.email ?? "");
 
         if (mounted) {
-
           if (role == UserRole.admin) {
             // 🔥 ADMIN UI (you can later change to AdminDashboardPage)
             Navigator.pushReplacementNamed(context, '/admin_home');
@@ -233,9 +230,7 @@ class _SignInPageState extends State<SignInPage>
             // 🔥 NORMAL USER UI
             Navigator.pushReplacementNamed(context, '/home_al');
           }
-
         }
-
       } else {
         // ❌ Not verified
         await FirebaseAuth.instance.signOut(); // Auto sign out
@@ -291,12 +286,9 @@ class _SignInPageState extends State<SignInPage>
 
       if (token != null) {
         await http.post(
-          Uri.parse("http://192.168.10.11:3000/save-token"), // same as baseUrl
+          Uri.parse("http://192.168.1.4:3000/save-token"), // same as baseUrl
           headers: {"Content-Type": "application/json"},
-          body: jsonEncode({
-            "userId": userId,
-            "token": token,
-          }),
+          body: jsonEncode({"userId": userId, "token": token}),
         );
       }
     } catch (e) {
@@ -372,7 +364,10 @@ class _SignInPageState extends State<SignInPage>
                           children: [
                             InkWell(
                               onTap: () => mounted
-                                  ? Navigator.pushReplacementNamed(context, '/home_al')
+                                  ? Navigator.pushReplacementNamed(
+                                      context,
+                                      '/home_al',
+                                    )
                                   : null,
                               borderRadius: BorderRadius.circular(25),
                               child: Container(
@@ -382,22 +377,27 @@ class _SignInPageState extends State<SignInPage>
                                   gradient: LinearGradient(
                                     colors: isDark
                                         ? [
-                                            const Color(0xFFFFFFFF)
-                                                .withOpacity(0.3),
-                                            const Color(0xFFFFFFFF)
-                                                .withOpacity(0.1),
+                                            const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.3),
+                                            const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.1),
                                           ]
                                         : [
-                                            const Color(0xFF2C3E50)
-                                                .withOpacity(0.2),
-                                            const Color(0xFF2C3E50)
-                                                .withOpacity(0.1),
+                                            const Color(
+                                              0xFF2C3E50,
+                                            ).withOpacity(0.2),
+                                            const Color(
+                                              0xFF2C3E50,
+                                            ).withOpacity(0.1),
                                           ],
                                   ),
                                   borderRadius: BorderRadius.circular(25),
                                   border: Border.all(
-                                    color: const Color(0xFF2C3E50)
-                                        .withOpacity(0.2),
+                                    color: const Color(
+                                      0xFF2C3E50,
+                                    ).withOpacity(0.2),
                                     width: 2,
                                   ),
                                 ),
@@ -431,10 +431,12 @@ class _SignInPageState extends State<SignInPage>
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600,
                                       color: isDark
-                                          ? const Color(0xFFFFFFFF)
-                                              .withOpacity(0.85)
-                                          : const Color(0xFF2C3E50)
-                                              .withOpacity(0.8),
+                                          ? const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.85)
+                                          : const Color(
+                                              0xFF2C3E50,
+                                            ).withOpacity(0.8),
                                     ),
                                   ),
                                 ],
@@ -450,22 +452,27 @@ class _SignInPageState extends State<SignInPage>
                                   gradient: LinearGradient(
                                     colors: isDark
                                         ? [
-                                            const Color(0xFFFFFFFF)
-                                                .withOpacity(0.3),
-                                            const Color(0xFFFFFFFF)
-                                                .withOpacity(0.1),
+                                            const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.3),
+                                            const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.1),
                                           ]
                                         : [
-                                            const Color(0xFF2C3E50)
-                                                .withOpacity(0.2),
-                                            const Color(0xFF2C3E50)
-                                                .withOpacity(0.1),
+                                            const Color(
+                                              0xFF2C3E50,
+                                            ).withOpacity(0.2),
+                                            const Color(
+                                              0xFF2C3E50,
+                                            ).withOpacity(0.1),
                                           ],
                                   ),
                                   borderRadius: BorderRadius.circular(25),
                                   border: Border.all(
-                                    color: const Color(0xFF2C3E50)
-                                        .withOpacity(0.2),
+                                    color: const Color(
+                                      0xFF2C3E50,
+                                    ).withOpacity(0.2),
                                     width: 1.5,
                                   ),
                                 ),
@@ -514,22 +521,27 @@ class _SignInPageState extends State<SignInPage>
                                 gradient: LinearGradient(
                                   colors: isDark
                                       ? [
-                                          const Color(0xFF8B7FFF)
-                                              .withOpacity(0.35),
-                                          const Color(0xFF8B7FFF)
-                                              .withOpacity(0.2),
+                                          const Color(
+                                            0xFF8B7FFF,
+                                          ).withOpacity(0.35),
+                                          const Color(
+                                            0xFF8B7FFF,
+                                          ).withOpacity(0.2),
                                         ]
                                       : [
-                                          const Color(0xFF6C63FF)
-                                              .withOpacity(0.25),
-                                          const Color(0xFF6C63FF)
-                                              .withOpacity(0.15),
+                                          const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.25),
+                                          const Color(
+                                            0xFF6C63FF,
+                                          ).withOpacity(0.15),
                                         ],
                                 ),
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: const Color(0xFFFFFFFF)
-                                      .withOpacity(0.3),
+                                  color: const Color(
+                                    0xFFFFFFFF,
+                                  ).withOpacity(0.3),
                                   width: 1.5,
                                 ),
                               ),
@@ -560,16 +572,19 @@ class _SignInPageState extends State<SignInPage>
                                 Container(
                                   decoration: BoxDecoration(
                                     color: isDark
-                                        ? const Color(0xFF000000)
-                                            .withOpacity(0.2)
-                                        : const Color(0xFFFFFFFF)
-                                            .withOpacity(0.5),
+                                        ? const Color(
+                                            0xFF000000,
+                                          ).withOpacity(0.2)
+                                        : const Color(
+                                            0xFFFFFFFF,
+                                          ).withOpacity(0.5),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
                                       color: _emailError.isNotEmpty
                                           ? const Color(0xFFFF4D4D)
-                                          : const Color(0xFFFFFFFF)
-                                              .withOpacity(0.2),
+                                          : const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.2),
                                       width: _emailError.isNotEmpty ? 2 : 1.5,
                                     ),
                                   ),
@@ -592,17 +607,19 @@ class _SignInPageState extends State<SignInPage>
                                         color: _emailError.isNotEmpty
                                             ? const Color(0xFFFF4D4D)
                                             : isDark
-                                                ? const Color(0xFFFFFFFF)
-                                                    .withOpacity(0.6)
-                                                : const Color(0xFF2C3E50)
-                                                    .withOpacity(0.6),
+                                            ? const Color(
+                                                0xFFFFFFFF,
+                                              ).withOpacity(0.6)
+                                            : const Color(
+                                                0xFF2C3E50,
+                                              ).withOpacity(0.6),
                                       ),
                                       border: InputBorder.none,
                                       contentPadding:
                                           const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 16,
-                                      ),
+                                            horizontal: 16,
+                                            vertical: 16,
+                                          ),
                                     ),
                                     onChanged: (value) {
                                       if (_emailError.isNotEmpty) {
@@ -613,7 +630,10 @@ class _SignInPageState extends State<SignInPage>
                                 ),
                                 if (_emailError.isNotEmpty)
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 6, left: 4),
+                                    padding: const EdgeInsets.only(
+                                      top: 6,
+                                      left: 4,
+                                    ),
                                     child: Text(
                                       _emailError,
                                       style: const TextStyle(
@@ -644,16 +664,19 @@ class _SignInPageState extends State<SignInPage>
                                 Container(
                                   decoration: BoxDecoration(
                                     color: isDark
-                                        ? const Color(0xFF000000)
-                                            .withOpacity(0.2)
-                                        : const Color(0xFFFFFFFF)
-                                            .withOpacity(0.5),
+                                        ? const Color(
+                                            0xFF000000,
+                                          ).withOpacity(0.2)
+                                        : const Color(
+                                            0xFFFFFFFF,
+                                          ).withOpacity(0.5),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
                                       color: _passwordError.isNotEmpty
                                           ? const Color(0xFFFF4D4D)
-                                          : const Color(0xFFFFFFFF)
-                                              .withOpacity(0.2),
+                                          : const Color(
+                                              0xFFFFFFFF,
+                                            ).withOpacity(0.2),
                                       width: _passwordError.isNotEmpty
                                           ? 2
                                           : 1.5,
@@ -678,15 +701,19 @@ class _SignInPageState extends State<SignInPage>
                                         color: _passwordError.isNotEmpty
                                             ? const Color(0xFFFF4D4D)
                                             : isDark
-                                                ? const Color(0xFFFFFFFF)
-                                                    .withOpacity(0.6)
-                                                : const Color(0xFF2C3E50)
-                                                    .withOpacity(0.6),
+                                            ? const Color(
+                                                0xFFFFFFFF,
+                                              ).withOpacity(0.6)
+                                            : const Color(
+                                                0xFF2C3E50,
+                                              ).withOpacity(0.6),
                                       ),
                                       suffixIcon: IconButton(
                                         onPressed: () {
                                           setState(
-                                              () => _showPassword = !_showPassword);
+                                            () =>
+                                                _showPassword = !_showPassword,
+                                          );
                                         },
                                         icon: Icon(
                                           _showPassword
@@ -696,18 +723,20 @@ class _SignInPageState extends State<SignInPage>
                                           color: _passwordError.isNotEmpty
                                               ? const Color(0xFFFF4D4D)
                                               : isDark
-                                                  ? const Color(0xFFFFFFFF)
-                                                      .withOpacity(0.6)
-                                                  : const Color(0xFF2C3E50)
-                                                      .withOpacity(0.6),
+                                              ? const Color(
+                                                  0xFFFFFFFF,
+                                                ).withOpacity(0.6)
+                                              : const Color(
+                                                  0xFF2C3E50,
+                                                ).withOpacity(0.6),
                                         ),
                                       ),
                                       border: InputBorder.none,
                                       contentPadding:
                                           const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 16,
-                                      ),
+                                            horizontal: 16,
+                                            vertical: 16,
+                                          ),
                                     ),
                                     onChanged: (value) {
                                       if (_passwordError.isNotEmpty) {
@@ -718,7 +747,10 @@ class _SignInPageState extends State<SignInPage>
                                 ),
                                 if (_passwordError.isNotEmpty)
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 6, left: 4),
+                                    padding: const EdgeInsets.only(
+                                      top: 6,
+                                      left: 4,
+                                    ),
                                     child: Text(
                                       _passwordError,
                                       style: const TextStyle(
@@ -771,8 +803,9 @@ class _SignInPageState extends State<SignInPage>
                                   ),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: const Color(0xFFFFFFFF)
-                                        .withOpacity(0.3),
+                                    color: const Color(
+                                      0xFFFFFFFF,
+                                    ).withOpacity(0.3),
                                     width: 1.5,
                                   ),
                                 ),
@@ -782,9 +815,10 @@ class _SignInPageState extends State<SignInPage>
                                   children: _isLoading
                                       ? [
                                           const CircularProgressIndicator(
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              Colors.white,
-                                            ),
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
                                             strokeWidth: 2,
                                           ),
                                           const SizedBox(width: 10),
@@ -827,10 +861,12 @@ class _SignInPageState extends State<SignInPage>
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: isDark
-                                        ? const Color(0xFFFFFFFF)
-                                            .withOpacity(0.8)
-                                        : const Color(0xFF2C3E50)
-                                            .withOpacity(0.8),
+                                        ? const Color(
+                                            0xFFFFFFFF,
+                                          ).withOpacity(0.8)
+                                        : const Color(
+                                            0xFF2C3E50,
+                                          ).withOpacity(0.8),
                                   ),
                                 ),
                                 const SizedBox(width: 6),

@@ -1,5 +1,6 @@
 // lib/pages/signup_page.dart
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -235,16 +236,15 @@ class _SignUpPageState extends State<SignUpPage>
       final user = userCredential.user;
 
       if (user != null) {
-        // ✅ STEP 3: SET DISPLAY NAME
-        await user.updateDisplayName(name);
-
-        // ✅ Reload to reflect displayName immediately
-        await user.reload();
-
-        // ✅ STEP 4: Send email verification (kept as-is)
-        await user.sendEmailVerification();
-
-        await FirebaseAuth.instance.signOut();
+        try {
+          await user.updateDisplayName(name);
+          await user.reload();
+          await user.sendEmailVerification();
+        } catch (e) {
+          if (kDebugMode) debugPrint('Post-creation error: $e');
+        } finally {
+          await FirebaseAuth.instance.signOut();
+        }
 
         if (mounted) {
           setState(() {
@@ -270,11 +270,20 @@ class _SignUpPageState extends State<SignUpPage>
         );
         setState(() => _isLoading = false);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('SignUp error: $e');
+        debugPrint('SignUp stackTrace: $stackTrace');
+      }
+      // Ensure user is signed out if account creation itself fails midway
+      await FirebaseAuth.instance.signOut().catchError((_) {});
       if (mounted) {
+        final errorText = kDebugMode
+            ? 'Failed to create account: $e'
+            : 'Failed to create account. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to create account. Please try again.'),
+          SnackBar(
+            content: Text(errorText),
             backgroundColor: Colors.red,
           ),
         );

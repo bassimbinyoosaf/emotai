@@ -39,15 +39,13 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // 🔗 API Base URL
-const String baseUrl = "http://192.168.10.11:3000";
+const String baseUrl = "http://192.168.1.4:3000";
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   /// 🔥 Firebase Init
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     print("Foreground notification received");
@@ -89,17 +87,16 @@ Future<void> main() async {
   const AndroidInitializationSettings androidInitSettings =
       AndroidInitializationSettings('@mipmap/ic_launcher');
 
-  const InitializationSettings initSettings =
-      InitializationSettings(android: androidInitSettings);
+  const InitializationSettings initSettings = InitializationSettings(
+    android: androidInitSettings,
+  );
 
   await flutterLocalNotificationsPlugin.initialize(
     initSettings,
     onDidReceiveNotificationResponse: (NotificationResponse response) {
       navigatorKey.currentState?.push(
         MaterialPageRoute(
-          builder: (_) => const ChatPage(
-            detectedEmotion: "Reminder",
-          ),
+          builder: (_) => const ChatPage(detectedEmotion: "Reminder"),
         ),
       );
     },
@@ -107,7 +104,8 @@ Future<void> main() async {
 
   final androidPlugin = flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
 
   if (androidPlugin != null) {
     await androidPlugin.createNotificationChannel(channel);
@@ -170,10 +168,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
       _lastBackPressed = now;
 
-      AndroidToast.show(
-        context,
-        "Swipe again to exit",
-      );
+      AndroidToast.show(context, "Swipe again to exit");
 
       return true;
     }
@@ -190,10 +185,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       await http.post(
         Uri.parse('$baseUrl/user-active'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': userId,
-          'isActive': isActive,
-        }),
+        body: jsonEncode({'userId': userId, 'isActive': isActive}),
       );
 
       print('GLOBAL ACTIVE: $isActive');
@@ -280,10 +272,7 @@ class AuthGate extends StatelessWidget {
               http.post(
                 Uri.parse('$baseUrl/user-active'),
                 headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'userId': userId,
-                  'isActive': true,
-                }),
+                body: jsonEncode({'userId': userId, 'isActive': true}),
               );
             }
           });

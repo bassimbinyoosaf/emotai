@@ -9,8 +9,7 @@ import '../pages/home_al_page.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-
-const String baseUrl = "http://192.168.10.11:3000";
+const String baseUrl = "http://192.168.1.4:3000";
 
 class ChatPage extends StatefulWidget {
   final String detectedEmotion;
@@ -24,13 +23,12 @@ class ChatPage extends StatefulWidget {
 
   @override
   State<ChatPage> createState() => _ChatPageState();
-  
 }
 
 class _ChatPageState extends State<ChatPage>
     with SingleTickerProviderStateMixin {
-      String previousEmotion = "";
-      late String currentEmotion;
+  String previousEmotion = "";
+  late String currentEmotion;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Map<String, String>> _messages = [];
@@ -42,18 +40,12 @@ class _ChatPageState extends State<ChatPage>
       await http.post(
         Uri.parse("$baseUrl/end-chat"),
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "userId": FirebaseAuth.instance.currentUser!.uid,
-        }),
+        body: jsonEncode({"userId": FirebaseAuth.instance.currentUser!.uid}),
       );
 
       if (!mounted) return;
 
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/home_al',
-        (route) => false,
-      );
+      Navigator.pushNamedAndRemoveUntil(context, '/home_al', (route) => false);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -63,15 +55,12 @@ class _ChatPageState extends State<ChatPage>
       );
 
       _scrollToBottom(); // ✅ INSIDE function
-
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Failed to end chat"),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Failed to end chat")));
     }
   }
 
@@ -89,11 +78,12 @@ class _ChatPageState extends State<ChatPage>
     currentEmotion = widget.detectedEmotion;
     previousEmotion = widget.detectedEmotion;
 
-    _fadeController =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
     _fadeAnim = Tween<double>(begin: 0, end: 1).animate(_fadeController);
     _fadeController.forward();
-
 
     // 🔥 ADD THIS BELOW
     if (widget.isFromContinue) {
@@ -101,10 +91,8 @@ class _ChatPageState extends State<ChatPage>
     }
   }
 
-
   @override
   void dispose() {
-    
     _controller.dispose();
     _scrollController.dispose();
     _fadeController.dispose();
@@ -127,11 +115,13 @@ class _ChatPageState extends State<ChatPage>
 
     final user = FirebaseAuth.instance.currentUser;
 
-    final summaryRef = FirebaseDatabase.instance
-        .ref("users/${user!.uid}/chat_memory/summary");
+    final summaryRef = FirebaseDatabase.instance.ref(
+      "users/${user!.uid}/chat_memory/summary",
+    );
 
-    final topicRef = FirebaseDatabase.instance
-        .ref("users/${user.uid}/chat_memory/topic");
+    final topicRef = FirebaseDatabase.instance.ref(
+      "users/${user.uid}/chat_memory/topic",
+    );
 
     final summarySnap = await summaryRef.get();
     final topicSnap = await topicRef.get();
@@ -157,17 +147,13 @@ class _ChatPageState extends State<ChatPage>
     if (topic.isNotEmpty) {
       introMessage = "How are things going with $topic now?";
     } else if (summary.isNotEmpty) {
-      introMessage =
-          "Earlier you mentioned \"$summary\". How do you feel now?";
+      introMessage = "Earlier you mentioned \"$summary\". How do you feel now?";
     } else {
       introMessage = "Welcome back. How are you feeling now?";
     }
 
     setState(() {
-      _messages.add({
-        "role": "bot",
-        "text": introMessage,
-      });
+      _messages.add({"role": "bot", "text": introMessage});
     });
 
     _scrollToBottom();
@@ -176,23 +162,33 @@ class _ChatPageState extends State<ChatPage>
   String? detectEmotionFromText(String text) {
     text = text.toLowerCase();
 
-    if (text.contains("better") || text.contains("fine") || text.contains("okay")) {
+    if (text.contains("better") ||
+        text.contains("fine") ||
+        text.contains("okay")) {
       return "neutral";
     }
 
-    if (text.contains("happy") || text.contains("good") || text.contains("great")) {
+    if (text.contains("happy") ||
+        text.contains("good") ||
+        text.contains("great")) {
       return "happy";
     }
 
-    if (text.contains("sad") || text.contains("tired") || text.contains("bad")) {
+    if (text.contains("sad") ||
+        text.contains("tired") ||
+        text.contains("bad")) {
       return "sad";
     }
 
-    if (text.contains("angry") || text.contains("annoyed") || text.contains("frustrated")) {
+    if (text.contains("angry") ||
+        text.contains("annoyed") ||
+        text.contains("frustrated")) {
       return "anger";
     }
 
-    if (text.contains("scared") || text.contains("worried") || text.contains("afraid")) {
+    if (text.contains("scared") ||
+        text.contains("worried") ||
+        text.contains("afraid")) {
       return "fear";
     }
 
@@ -200,15 +196,15 @@ class _ChatPageState extends State<ChatPage>
   }
 
   bool checkEmotionUpgrade(String oldEmotion, String newEmotion) {
-  const order = ["sad", "fear", "anger", "neutral", "happy"];
+    const order = ["sad", "fear", "anger", "neutral", "happy"];
 
-  int oldIndex = order.indexOf(oldEmotion);
-  int newIndex = order.indexOf(newEmotion);
+    int oldIndex = order.indexOf(oldEmotion);
+    int newIndex = order.indexOf(newEmotion);
 
-  return newIndex > oldIndex;
-}
+    return newIndex > oldIndex;
+  }
 
-// ================== EXISTING FUNCTION ==================
+  // ================== EXISTING FUNCTION ==================
 
   Future<void> sendMessage() async {
     final text = _controller.text.trim();
@@ -255,7 +251,7 @@ class _ChatPageState extends State<ChatPage>
         if (checkEmotionUpgrade(oldEmotion, currentEmotion)) {
           _messages.add({
             "role": "bot",
-            "text": "You seem to be feeling a bit better now."
+            "text": "You seem to be feeling a bit better now.",
           });
         }
       } else {
@@ -327,11 +323,11 @@ class _ChatPageState extends State<ChatPage>
 
     final gradient = isUser
         ? (isDark
-            ? [const Color(0xFF8B7FFF), const Color(0xFFB4A7FF)]
-            : [const Color(0xFF0A7EA4), const Color(0xFF3DA5C8)])
+              ? [const Color(0xFF8B7FFF), const Color(0xFFB4A7FF)]
+              : [const Color(0xFF0A7EA4), const Color(0xFF3DA5C8)])
         : (isDark
-            ? [Colors.white.withOpacity(0.12), Colors.white.withOpacity(0.05)]
-            : [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.7)]);
+              ? [Colors.white.withOpacity(0.12), Colors.white.withOpacity(0.05)]
+              : [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.7)]);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -342,15 +338,13 @@ class _ChatPageState extends State<ChatPage>
         constraints: const BoxConstraints(maxWidth: 280),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-              colors: gradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight),
+            colors: gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 10,
-            )
+            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10),
           ],
         ),
         child: Text(
@@ -375,8 +369,14 @@ class _ChatPageState extends State<ChatPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isDark
-                ? [Colors.white.withOpacity(0.12), Colors.white.withOpacity(0.05)]
-                : [Colors.white.withOpacity(0.9), Colors.white.withOpacity(0.7)],
+                ? [
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.05),
+                  ]
+                : [
+                    Colors.white.withOpacity(0.9),
+                    Colors.white.withOpacity(0.7),
+                  ],
           ),
           borderRadius: BorderRadius.circular(18),
         ),
@@ -400,8 +400,10 @@ class _ChatPageState extends State<ChatPage>
           gradient: LinearGradient(
             colors: isDark
                 ? [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.1)]
-                : [const Color(0xFF2C3E50).withOpacity(0.2),
-                   const Color(0xFF2C3E50).withOpacity(0.1)],
+                : [
+                    const Color(0xFF2C3E50).withOpacity(0.2),
+                    const Color(0xFF2C3E50).withOpacity(0.1),
+                  ],
           ),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: Colors.white.withOpacity(0.20)),
@@ -425,9 +427,17 @@ class _ChatPageState extends State<ChatPage>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isDark
-                ? const [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C3E64)]
-                : const [Color(0xFFa8edea), Color(0xFFfed6e3),
-                         Color(0xFFa6c1ee), Color(0xFFfbc2eb)],
+                ? const [
+                    Color(0xFF0F2027),
+                    Color(0xFF203A43),
+                    Color(0xFF2C3E64),
+                  ]
+                : const [
+                    Color(0xFFa8edea),
+                    Color(0xFFfed6e3),
+                    Color(0xFFa6c1ee),
+                    Color(0xFFfbc2eb),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -468,8 +478,7 @@ class _ChatPageState extends State<ChatPage>
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _buildHeaderIcon(
                                 icon: Icons.arrow_back,
@@ -500,7 +509,9 @@ class _ChatPageState extends State<ChatPage>
                                         fontWeight: FontWeight.w600,
                                         color: isDark
                                             ? Colors.white70
-                                            : const Color(0xFF2C3E50).withOpacity(0.8),
+                                            : const Color(
+                                                0xFF2C3E50,
+                                              ).withOpacity(0.8),
                                       ),
                                     ),
                                   ],
@@ -533,43 +544,28 @@ class _ChatPageState extends State<ChatPage>
 
                         // Intro Card
                         AnimatedSwitcher(
-                          duration:
-                              const Duration(milliseconds: 400),
+                          duration: const Duration(milliseconds: 400),
                           child: _showIntroCard
                               ? Container(
-                                  key:
-                                      const ValueKey("intro"),
-                                  margin:
-                                      const EdgeInsets
-                                              .symmetric(
-                                          horizontal: 20),
-                                  padding:
-                                      const EdgeInsets.all(
-                                          16),
-                                  decoration:
-                                      BoxDecoration(
+                                  key: const ValueKey("intro"),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
                                     color: isDark
-                                        ? Colors.white
-                                            .withOpacity(
-                                                0.08)
-                                        : Colors.white
-                                            .withOpacity(
-                                                0.85),
-                                    borderRadius:
-                                        BorderRadius
-                                            .circular(18),
+                                        ? Colors.white.withOpacity(0.08)
+                                        : Colors.white.withOpacity(0.85),
+                                    borderRadius: BorderRadius.circular(18),
                                   ),
                                   child: Text(
                                     "Talk about how you're feeling. I'm here to listen.",
-                                    textAlign:
-                                        TextAlign.center,
+                                    textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      fontWeight:
-                                          FontWeight.w600,
+                                      fontWeight: FontWeight.w600,
                                       color: isDark
                                           ? Colors.white
-                                          : Colors
-                                              .black87,
+                                          : Colors.black87,
                                     ),
                                   ),
                                 )
@@ -578,117 +574,123 @@ class _ChatPageState extends State<ChatPage>
 
                         const SizedBox(height: 10),
 
-// 💬 CHAT MESSAGES
-Expanded(
-  child: ListView.builder(
-    controller: _scrollController,
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    itemCount: _messages.length + (_isLoading ? 1 : 0),
-    itemBuilder: (context, index) {
-      if (index < _messages.length) {
-        return _buildMessage(_messages[index], isDark);
-      } else {
-        return _buildTypingBubble(isDark);
-      }
-    },
-  ),
-),
+                        // 💬 CHAT MESSAGES
+                        Expanded(
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _messages.length + (_isLoading ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index < _messages.length) {
+                                return _buildMessage(_messages[index], isDark);
+                              } else {
+                                return _buildTypingBubble(isDark);
+                              }
+                            },
+                          ),
+                        ),
 
-// 🔽 INPUT AT BOTTOM
-SafeArea(
-  child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Row(
-      children: [
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.white.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: TextField(
-              controller: _controller,
-              style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black),
-              decoration: const InputDecoration(
-                hintText: "Type or speak...",
-                border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 16),
-              ),
-              onSubmitted: (_) => sendMessage(),
-            ),
-          ),
-        ),
+                        // 🔽 INPUT AT BOTTOM
+                        SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? Colors.white.withOpacity(0.08)
+                                          : Colors.white.withOpacity(0.8),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: TextField(
+                                      controller: _controller,
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        hintText: "Type or speak...",
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                      ),
+                                      onSubmitted: (_) => sendMessage(),
+                                    ),
+                                  ),
+                                ),
 
-            const SizedBox(width: 8),
+                                const SizedBox(width: 8),
 
-            // 🎤 MIC BUTTON
-            GestureDetector(
-              onTap: () {
-                if (_isListening) {
-                  stopListening();
-                } else {
-                  startListening();
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _isListening ? Colors.red : Colors.grey,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isListening ? Icons.mic : Icons.mic_none,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+                                // 🎤 MIC BUTTON
+                                GestureDetector(
+                                  onTap: () {
+                                    if (_isListening) {
+                                      stopListening();
+                                    } else {
+                                      startListening();
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: _isListening
+                                          ? Colors.red
+                                          : Colors.grey,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      _isListening ? Icons.mic : Icons.mic_none,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
 
-            const SizedBox(width: 8),
+                                const SizedBox(width: 8),
 
-            // SEND BUTTON
-            GestureDetector(
-              onTap: sendMessage,
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isDark
-                        ? const [
-                            Color(0xFF8B7FFF),
-                            Color(0xFFB4A7FF)
-                          ]
-                        : const [
-                            Color(0xFF0A7EA4),
-                            Color(0xFF3DA5C8)
-                          ],
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.send,
-                  color: Colors.white,
-                              ),
+                                // SEND BUTTON
+                                GestureDetector(
+                                  onTap: sendMessage,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: isDark
+                                            ? const [
+                                                Color(0xFF8B7FFF),
+                                                Color(0xFFB4A7FF),
+                                              ]
+                                            : const [
+                                                Color(0xFF0A7EA4),
+                                                Color(0xFF3DA5C8),
+                                              ],
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.send,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 class _TypingDots extends StatefulWidget {
@@ -721,18 +723,16 @@ class _TypingDotsState extends State<_TypingDots>
     return AnimatedBuilder(
       animation: _controller,
       builder: (_, __) {
-        double value =
-            math.sin((_controller.value * 2 * math.pi) + (index * 0.8));
+        double value = math.sin(
+          (_controller.value * 2 * math.pi) + (index * 0.8),
+        );
         double opacity = (value + 1) / 2;
 
         return Opacity(
           opacity: opacity,
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 3),
-            child: CircleAvatar(
-              radius: 4,
-              backgroundColor: Colors.grey,
-            ),
+            child: CircleAvatar(radius: 4, backgroundColor: Colors.grey),
           ),
         );
       },
@@ -743,11 +743,7 @@ class _TypingDotsState extends State<_TypingDots>
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        _dot(0),
-        _dot(1),
-        _dot(2),
-      ],
+      children: [_dot(0), _dot(1), _dot(2)],
     );
   }
 }
